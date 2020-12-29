@@ -40,6 +40,7 @@ shcolorlib ships with two test suites:
 * one for testing the correctness of each function
 
 To run the speed test, run: `shcolorlib run_time_test`
+
 To run the assertion test, run: `shcolorlib run_assertion_test`
 
 ## quickjs and tcc in a shell library?
