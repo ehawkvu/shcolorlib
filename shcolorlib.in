@@ -1,0 +1,879 @@
+#!/usr/bin/env sh
+# LICENSE: LGPL-3.0
+# desc: a POSIX shell color library
+# deps: sed, bc, tr (benchmarking), gnu-date (benchmarking)
+
+# languages currently used: shell, bc, (c, JavaScript)
+
+# usage:
+# You can either source the library or call it directly.
+# '. shcolorlib' OR 'shcolorlib rgb2hex 23,43,192'
+
+################################################################################
+#                                                                              #
+#                           Global Variables                                   #
+#                                                                              #
+################################################################################
+
+JS_INTERP="qjs" # default to quickjs
+
+BC_SCALE=20; # default scale for bc commands/scripts
+
+# predefined BC functions, stored as a variable
+BC_FNS="
+define abs(x){
+	if (x < 0) {
+		return (x * -1)
+	}
+	return x
+}
+
+define min(x, y, z){
+	if (x < y){
+		if (x < z){
+			return x
+		}
+		if (z < x){
+			return z
+		}
+	}
+	if (x < z){
+		if (y < x){
+			return y
+		}
+	}
+}
+
+/* TODO: refactor */
+define max(x, y, z){
+	if (x > y){
+		if (x > z){
+			return x
+		}
+	}
+	if (x > z){
+		if (y > x){
+			return y
+		}
+	}
+	if (z > x){
+		if (z > y){
+			return z
+		}
+	}
+}
+
+define avg(x, y, z){
+	return ((x + y + z) / 3)
+}
+
+/* https://askubuntu.com/questions/179898/how-to-round-decimals-using-bc-in-bash */
+define round(num, digits){
+	scale=digits;
+	if (num < 0) {
+		return ((((10^digits) * num) - 0.5 ) / (10^digits))
+	}
+	return ((((10^digits) * num) + 0.5 ) / (10^digits))
+}
+
+"
+
+LOG_RED='\033[0;31m'
+LOG_GREEN='\033[0;32m'
+LOG_CYAN='\033[0;36m'
+LOG_YELLOW='\033[1;33m'
+LOG_BLINK='\033[5m'
+LOG_BOLD='\033[1m'
+LOG_FLIP='\033[7m'
+LOG_RESET='\033[0m'
+
+################################################################################
+#                                                                              #
+#                                  Helper Methods                              #
+#                                                                              #
+################################################################################
+
+log(){
+	printf "${LOG_CYAN}${LOG_BOLD}->${LOG_RESET} ${LOG_GREEN}${LOG_BOLD}${1}${LOG_RESET} - ${LOG_RED}${2}${LOG_RESET}\n"
+}
+
+die(){
+	log "$1" "exiting..."
+	exit 1
+}
+
+hasdeps(){
+	command -v tr 1> /dev/null || die "'tr' is not installed"
+	command -v sed 1> /dev/null || die "'sed' is not installed"
+	command -v bc 1> /dev/null || die "'bc' is not installed"
+}
+
+hasoptdeps(){
+	command -v tcc 1> /dev/null && log "'tcc' is installed | scripting support: " "y" || log "'tcc' is not installed | scripting support: " "n"
+	command -v ${JS_INTERP} 1> /dev/null && log "'${JS_INTERP}' is installed | scripting support: " "y" || log "'${JS_INTERP}' is not installed | scripting support: " "n"
+	command -v luajit 1> /dev/null && log "'luajit' is installed | scripting support: " "y" || log "'luajit' is not installed | scripting support: " "n"
+ 	date --version | grep "GNU" 1> /dev/null && log "'gnu-date' is installed | benchmark support: " "y" || "'gnu-date' is not installed | benchmark support: " "n"
+}
+
+round(){
+	echo "$BC_FNS round($1,0)" | bc
+	#printf "%.0f" "$1"
+	#echo "$1/1.18" | bc -l | xargs printf %.2f
+	#printf %.2f $(echo "$1/1.18" | bc -l)
+}
+
+b102hex(){
+	# desc: base 10 to hex converter
+	# ret: the hex value for a base 10 number
+	# ex: 'b102hex 153'
+	[ "$1" -gt 15 ] && printf "%x" "$1"
+	[ "$1" -le 15 ] && printf "0%x" "$1"
+}
+
+three_f1(){
+	# desc: get the red value from an rgb value
+	# use substring removal to get the first field in an rgb value
+	printf "%s" "${1%%,*}"
+}
+
+three_f2(){
+	# substring removal to get rid of the first field
+	t=${1#*,}
+	# now get the first value (second field in original rgb)
+	printf "%s" "${t%%,*}"
+}
+
+three_f3(){
+	# get the last field from an rgb using substring removal
+	printf "%s" "${1##*,}"
+}
+
+################################################################################
+#                                                                              #
+#                                  RGB Methods                                 #
+#                                                                              #
+################################################################################
+
+rgb_is_r(){
+	# desc: return 0 if largest rgb value is red
+	# TODO: rewrite using bc
+	[ $(three_f1 "$1") -gt $(three_f2 "$1") ] \
+		&& [ $(three_f1 "$1") -gt $(three_f3 "$1") ]
+}
+
+rgb_is_g(){
+	# desc: return 0 if largest rgb value is green
+	# TODO: rewrite using bc
+	[ $(three_f2 "$1") -gt $(three_f1 "$1") ] \
+		&& [ $(three_f2 "$1") -gt $(three_f3 "$1") ]
+}
+
+rgb_is_b(){
+	# desc: return 0 if largest rgb value is blue
+	# TODO: rewrite using bc
+	[ $(three_f3 "$1") -gt $(three_f1 "$1") ] \
+		&& [ $(three_f3 "$1") -gt $(three_f2 "$1") ]
+}
+
+rgb_W_K(){
+	# desc: return W if white, and K if black
+	[ $(three_f1 "$1") -eq $(three_f2 "$1") ] \
+		&& [ $(three_f1 "$1") -eq $(three_f3 "$1") ] \
+		&& [ $(three_f1 "$1") -lt 127 ] \
+		&& printf "K"
+
+	[ $(three_f1 "$1") -eq $(three_f2 "$1") ] \
+		&& [ $(three_f1 "$1") -eq $(three_f3 "$1") ] \
+		&& [ $(three_f1 "$1") -ge 127 ] \
+		&& printf "W"
+}
+
+# return a character that corresponds to the color of the given rgb
+rgb_what_color(){
+	rgb_is_r "$1" && printf "R"
+	rgb_is_g "$1" && printf "G"
+	rgb_is_b "$1" && printf "B"
+	rgb_W_K "$1"
+	# yellow - large red and green values
+	# magenta - large red and blue values
+	# cyan - large green and blue values
+}
+
+rgb2hex(){
+	# desc: convert an rgb value formatted as r,g,b into a hex value formatted as '#ff00AA'
+	printf "#%s%s%s" "$(b102hex "$(three_f1 "$1")")" "$(b102hex "$(three_f2 "$1")")" "$(b102hex "$(three_f3 "$1")")"
+}
+
+rgb_triad(){
+	# desc: generate an rgb 'triad' from an initial rgb value
+	# ex: 'rgb_triad 123,43,243'
+	rv=$(three_f1 "$1")
+	gv=$(three_f2 "$1")
+	bv=$(three_f3 "$1")
+	printf "%s " "$1"
+	printf "%s,%s,%s "  "${bv}" "${rv}" "${gv}"
+	printf "%s,%s,%s "  "${gv}" "${bv}" "${rv}"
+}
+
+rgb_complement(){
+	rgb_complement_sh "$1" && return 0
+	command -v ${JS_INTERP} 2>&1 1> /dev/null && rgb_complement_quickjs "$1" && return 0
+}
+
+rgb_complement_sh(){
+	# desc: generate the complement of an rgb value
+	# ex: 'rgb_complement 123,43,243'
+	rv=$((255 - $(three_f1 "$1")))
+	gv=$((255 - $(three_f2 "$1")))
+	bv=$((255 - $(three_f3 "$1")))
+	printf "%s,%s,%s" "${rv}" "${gv}" "${bv}"
+}
+
+rgb_complement_quickjs(){
+	# ex: 'rgb_complement_quickjs 123,43,243'
+tjs=$(mktemp)
+cat <<EOF > $tjs
+var r = 255 - $(three_f1 $1)
+var g = 255 - $(three_f2 $1)
+var b = 255 - $(three_f3 $1)
+console.log(r + "," + g + "," + b)
+EOF
+${JS_INTERP} $tjs
+rm $tjs
+}
+
+rgb2rgbp(){
+	# FIXME: make sure this is the right order
+	rgb2rgbp_sh "$1" && return 0
+	command -v ${JS_INTERP} 2>&1 1> /dev/null && rgb2rgbp_quickjs "$1" && return 0
+	command -v tcc 2>&1 1> /dev/null && rgb2rgbp_tcc "$1" && return 0
+}
+
+rgb2rgbp_sh(){
+	# desc: converts an RGB value to be within the range of 0 and 1
+	# ex: 'rgb2rgbp 123,43,243'
+	rgb="$1"
+	printf "%s,%s,%s" \
+		$(echo "scale=$BC_SCALE; $(three_f1 "$rgb") / 255" | bc) \
+		$(echo "scale=$BC_SCALE; $(three_f2 "$rgb") / 255" | bc) \
+		$(echo "scale=$BC_SCALE; $(three_f3 "$rgb") / 255" | bc)
+}
+
+rgb2rgbp_tcc(){
+	# FIXME: prints out all zeros
+cat <<EOF | tcc -run -
+#include <stdio.h>
+#include <math.h>
+int main(){
+	float r = $(three_f1 $1) / 255;
+	float g = $(three_f2 $1) / 255;
+	float b = $(three_f3 $1) / 255;
+	printf("%f,%f,%f", r, g, b);
+	return 0;
+}
+EOF
+}
+
+rgb2rgbp_quickjs(){
+	# result of method has a 0 before the decimal; needs to be removed (for consistency)
+tjs=$(mktemp)
+cat <<EOF > $tjs
+console.log($(three_f1 $1) / 255 + "," + $(three_f2 $1) / 255 + "," + $(three_f3 $1) / 255)
+EOF
+${JS_INTERP} $tjs
+rm $tjs
+}
+
+rgb2cmyk(){
+	# TODO: finish rgbp2cmyk
+	rgbp2cmyk "$(rgb2rgbp "$1")"
+}
+
+getMAXrgb(){
+	# desc: get the largest value from an rgb value
+	# ex: 'getMAXrgb 123,43,243'
+	rv="$(three_f1 "$1")"
+	gv="$(three_f2 "$1")"
+	bv="$(three_f3 "$1")"
+	printf "%s" "$(echo "scale=$BC_SCALE $BC_FNS max($rv,$gv,$bv)" | bc)"
+}
+
+getMINrgb(){
+	# desc: get the smallest value from an rgb value
+	# ex: 'getMINrgb 123,43,243'
+	rv=$(three_f1 "$1")
+	gv=$(three_f2 "$1")
+	bv=$(three_f3 "$1")
+	printf "%s" "$(echo "$BC_FNS min($rv, $gv, $bv)" | bc)"
+}
+
+rgb_avg_v(){
+	# desc: calculate the average value from an rgb value
+	# ex: 'rgb_avg_v 123,43,243'
+	rv=$(three_f1 "$1")
+	gv=$(three_f2 "$1")
+	bv=$(three_f3 "$1")
+	# method doesn't use scale
+	echo "$BC_FNS avg($rv, $gv, $bv)" | bc
+}
+
+rgb2hsl(){
+	rgbp2hsl "$(rgb2rgbp "$1")"
+}
+
+rgb_blend_colors(){
+	rv="$(round "$(echo "0.5 * $(three_f1 $1) + 0.5 * $(three_f1 $2)" | bc)")"
+	gv="$(round "$(echo "0.5 * $(three_f2 $1) + 0.5 * $(three_f2 $2)" | bc)")"
+	bv="$(round "$(echo "0.5 * $(three_f3 $1) + 0.5 * $(three_f3 $2)" | bc)")"
+	printf "%s,%s,%s" "$rv" "$gv" "$bv"
+}
+
+################################################################################
+#                                                                              #
+#                                  RGBp Methods                                #
+#                                                                              #
+################################################################################
+
+rgbp2rgb(){
+	rgbp2rgb_sh "$1" && return 0
+	command -v ${JS_INTERP} 2>&1 1> /dev/null && rgbp2rgb_quickjs "$1" && return 0
+	rgbp2rgb_tcc "$1" && return 0
+}
+
+rgbp2rgb_sh(){
+	printf "%s,%s,%s" \
+		"$(round $(echo "$(three_f1 "$1") * 255" | bc))" \
+		"$(round $(echo "$(three_f2 "$1") * 255" | bc))" \
+		"$(round $(echo "$(three_f3 "$1") * 255" | bc))"
+}
+
+rgbp2rgb_quickjs(){
+tjs=$(mktemp)
+cat <<EOF > $tjs
+console.log(Math.round($(three_f1 $1) * 255) + "," + Math.round($(three_f2 $1) * 255) + "," + Math.round($(three_f3 $1) * 255))
+EOF
+${JS_INTERP} $tjs
+rm $tjs
+}
+
+rgbp2rgb_tcc(){
+cat <<EOF | tcc -run -
+#include <stdio.h>
+#include <math.h>
+int main(){
+	float r = $(three_f1 $1) * 255;
+	float g = $(three_f2 $1) * 255;
+	float b = $(three_f3 $1) * 255;
+	printf("%.0f,%.0f,%.0f", round(r), round(g), round(b));
+	return 0;
+}
+EOF
+}
+
+rgbp2cmyk(){
+	# FIXME: giving me negative numbers
+	rv="$(three_f1 "$1")"
+	gv="$(three_f2 "$1")"
+	bv="$(three_f3 "$1")"
+
+	k=$(echo "$BC_FNS min($rv, $gv, $bv)" | bc)
+	km1=$(echo "scale=$BC_SCALE; 1 - $k" | bc)
+	c=$(echo "scale=$BC_SCALE; ((1 - $rv - $k) / $km1) " | bc)
+	m=$(echo "scale=$BC_SCALE; ((1 - $gv - $k) / $km1) " | bc)
+	y=$(echo "scale=$BC_SCALE; ((1 - $bv - $k) / $km1) " | bc)
+	printf "%s,%s,%s,%s" "$c" "$m" "$y" "$k"
+}
+
+rgbp2hsl(){
+	# FIXME: this method is not yet finished; still errors
+	# FIXME: when passing in values of 255 with rgb2hsl, the method returns only zeros
+	# 			- whenever any values are passed that are equal, the method breaks (not good)
+	# - see resources!
+	rv=$(three_f1 "$1")
+	gv=$(three_f2 "$1")
+	bv=$(three_f3 "$1")
+	max=$(getMAXrgb "$1")
+	min=$(getMINrgb "$1")
+	l="$(echo "scale=$BC_SCALE; (($max + $min) / 2)" | bc)"
+	s="$l"
+	h="$l"
+
+	c="$(echo "scale=$BC_SCALE; ($max - $min)" | bc)"
+	if [ $max = $min ]
+	then
+		h="0"
+		s="0"
+	else
+		s=$(echo "scale=$BC_SCALE; $BC_FNS ($c / (1 - abs((2 * $l) - 1)))" | bc)
+		# if red is the max value
+		if [ "$rv" = "$max" ]
+		then
+	 	echo "red" 1>&2
+			segment=$(echo "scale=$BC_SCALE; (($gv - $bv) / $c)" | bc )
+			# echo "segment - " $segment 1>&2
+			shft=0 # 0 / 60
+			# if segment is less than zero
+			if [ "$(echo "($segment < 0)" | bc)" -eq "0" ]
+			then
+				shft=6 # 360 / 60
+			fi
+			h=$(echo "scale=$BC_SCALE; ($segment + $shft)" | bc)
+		# if green is the max value
+		elif [ "$gv" = "$max" ]
+		then
+			# segment = (b - r) / c
+			segment=$(echo "scale=$BC_SCALE; (($bv - $rv) / $c)" | bc )
+			shft=2 # 120 / 60
+			h=$(echo "scale=$BC_SCALE; ($segment + $shft)" | bc)
+		elif [ "$bv" = "$max" ]
+		then
+			segment=$(echo "scale=$BC_SCALE; (($rv - $gv) / $c)" | bc )
+			shft=4
+			h=$(echo "scale=$BC_SCALE; ($segment + $shft)" | bc)
+		fi
+	fi
+	h=$(echo "scale=$BC_SCALE; $h * 60" | bc) # turn h back into degrees
+	printf "%s,%s,%s" "$h" "$s" "$l"
+}
+
+rgbp2hsl_quickjs(){
+	# FIXME: method is not actually implemented at the moment.
+tjs=$(mktemp)
+cat <<EOF > $tjs
+var rv = $(three_f1 "$1")
+var gv = $(three_f2 "$1")
+var bv = $(three_f3 "$1")
+var max = $(getMAXrgb $1)
+var min = $(getMINrgb $1)
+
+var l = (max + min) / 2
+var c = max - min
+console.log(((1 - Math.abs(2 * lv - 1)) * sv))
+EOF
+${JS_INTERP} $tjs
+rm $tjs
+}
+
+################################################################################
+#                                                                              #
+#                                  HEX Methods                                 #
+#                                                                              #
+################################################################################
+
+hex2rgb(){
+	# desc: convert a hex color into an rgb value
+	# remove '#' from string, then format the hex value to look like proper
+	# hex numbers so printf can take care of the conversion (makes use of word splitting)
+	printf "%d,%d,%d" $(echo "$1" | sed -E -e "s~#~~" -e "s~(..)~ 0x\1~g")
+}
+
+hex2hsl(){
+	# hex -> rgb -> rgbp -> hsl
+	rgbp2hsl "$(rgb2rgbp "$(hex2rgb "$1")")"
+}
+
+hex_blend_colors(){
+	rgb2hex "$(rgb_blend_colors "$(hex2rgb "$1")"  "$(hex2rgb "$2")")"
+}
+
+hex_complement(){
+	rgb2hex "$(rgb_complement "$(hex2rgb "$1")")"
+}
+
+################################################################################
+#                                                                              #
+#                                  HSL Methods                                 #
+#                                                                              #
+################################################################################
+
+hsl_chroma(){
+	# FIXME: do testing to make sure the order is correct
+	hsl_chroma_sh "$1" && return 0
+	command -v ${JS_INTERP} 2>&1 1> /dev/null && hsl_chroma_quickjs "$1" && return 0
+}
+
+hsl_chroma_sh(){
+	# desc: calculate the chroma value of an HSL value
+	sv="$(three_f2 "$1")"
+	lv="$(three_f3 "$1")"
+	chroma="scale=$BC_SCALE;
+	$BC_FNS
+	define chroma(sv, lv){
+		return ((1 - abs(2 * lv - 1)) * sv)
+	}
+	chroma($sv, $lv)"
+	echo "$chroma" | bc
+}
+
+hsl_chroma_quickjs(){
+tjs=$(mktemp)
+cat <<EOF > $tjs
+var sv = $(three_f2 $1)
+var lv = $(three_f3 $1)
+console.log(((1 - Math.abs(2 * lv - 1)) * sv))
+EOF
+${JS_INTERP} $tjs
+rm $tjs
+}
+
+
+hsl_h_prime(){
+	# h' = h / 60
+	hv="$(three_f1 $1)"
+	echo "scale=$BC_SCALE; ($hv / 60)" | bc
+}
+
+hsl_intermediate_x(){
+	hprime="$1"
+	chroma="$2"
+	# function:
+	# x = c * (1 - |h' mod 2 - 1|)
+	echo "scale=$BC_SCALE;
+	$BC_FNS
+	define intx(hprime, chroma) {
+		return (chroma * (1 - abs(((hprime % 2) - 1))));
+		}
+	intx($hprime, $chroma)" | bc
+}
+
+hsl2rgbp(){
+	# https://gist.github.com/mjackson/5311256#file-color-conversion-algorithms-js-L57
+	# https://stackoverflow.com/questions/2353211/hsl-to-rgb-color-conversion
+	# TODO: finish/fix this method!
+	# FIXME: this method is not implemented properly!!!
+	hsl="$1"
+	echo "hsl - $hsl"
+	chroma="$(hsl_chroma "$hsl")"
+	echo "chroma - $chroma"
+	hprime="$(hsl_h_prime "$hsl")"
+	echo "hprime - $hprime"
+	x="$(hsl_intermediate_x "$hprime" "$chroma")" # FIXME: this method is returning a zero with hsl=200,.768,.257
+	echo "x - $x"
+
+	h=$(three_f1 $hsl)
+	s=$(three_f2 $hsl)
+	l=$(three_f3 $hsl)
+
+	echo "l - $l"
+	echo "chroma / 2 - $(echo "scale=$BC_SCALE; $chroma / 2" | bc)"
+	m=$(echo "scale=$BC_SCALE; $l - ($chroma / 2)" | bc)
+
+	#                     r,g,b - (prime)
+	#+-------------------+-----+
+	#|   0 <= h <   60 ->|c,x,0|
+	#|  60 <= h <  120 ->|x,c,0|
+	#| 120 <= h <  180 ->|0,c,x|
+	#| 180 <= h <  240 ->|0,x,c|
+	#| 240 <= h <  300 ->|x,0,c|
+	#| 300 <= h <  360 ->|c,0,x|
+	#+-------------------+-----+
+	hclassnum="$(echo "define classify(h) {
+		if (0 <= h && h < 60) {
+			return 0;
+		}
+		if (60 <= h && h < 120) {
+			return 1;
+		}
+		if (120 <= h && h < 180) {
+			return 2;
+		}
+		if (180 <= h && h < 240) {
+			return 3;
+		}
+		if (240 <= h && h < 300) {
+			return 4;
+		}
+		if (300 <= h && h < 360) {
+			return 5;
+		}
+	}
+classify($h)" | bc)"
+
+	c=$(echo "scale=$BC_SCALE; $chroma + $m" | bc)
+	x=$(echo "scale=$BC_SCALE; $x + $m" | bc)
+
+	echo "c - $c"
+	echo "x - $x"
+	echo "m - $m"
+	case $hclassnum in
+		0) rgbpv="$c,$x,$m" ;;
+ 		1) rgbpv="$x,$c,$m";;
+ 		2) rgbpv="$m,$c,$x";;
+ 		3) rgbpv="$m,$x,$c";;
+ 		4) rgbpv="$x,$m,$c";;
+ 		5) rgbpv="$c,$m,$x";;
+	esac
+	# r,g,b - percent
+	# = prime_value + m
+
+	printf "%s" "$rgbpv"
+}
+
+hsl2rgb(){
+	rgbp2rgb "$(hsl2rgbp "$1")"
+}
+
+################################################################################
+#                                                                              #
+#                              Printing Methods                                #
+#                                                                              #
+################################################################################
+
+print_rgb(){
+	# desc: print an rgb value as it's value
+	# ex: 'print_rgb 23,123,232'
+	rgb="$1"
+	printf "\033[48;2;%s;%s;%sm" "$(three_f1 "$rgb")" "$(three_f2 "$rgb")" "$(three_f3 "$rgb")"
+	printf "%s" "$rgb"
+	printf "\033[m"
+#	printf "\n"
+}
+
+print_text_rgb(){
+	# desc: print text highlighted as a rgb color
+	# ex: 'print_text_rgb "23,43,123" "here is some text"'
+	printf "\033[48;2;%s;%s;%sm" "$(three_f1 "$1")" "$(three_f2 "$1")" "$(three_f3 "$1")"
+	printf "%s" "$2"
+	printf "\033[m"
+}
+
+print_hex(){
+	# desc: print a hex value as it's value
+	# ex: 'print_hex "\#FF00aa"'
+	hex="$(echo $1 | tr -d '#')" # remove any '#'s
+	rgb="$(hex2rgb "$hex")"
+	printf "\033[48;2;%s;%s;%sm" "$(three_f1 "$rgb")" "$(three_f2 "$rgb")" "$(three_f3 "$rgb")"
+	printf "%s" "$hex"
+	printf "\033[m"
+#	printf "\n"
+}
+
+print_text_hex(){
+	# FIXME: currently doesn't work?
+	# - when called from command line it doesn't print anything?
+	# desc: print text highlighted as a hex color
+	# ex: 'print_text_hex "\#FF00aa" "here is some text"'
+	hex="$(echo $1 | tr -d '#')"
+	rgb="$(hex2rgb "$hex")"
+	printf "\033[48;2;%s;%s;%sm" "$(three_f1 "$rgb")" "$(three_f2 "$rgb")" "$(three_f3 "$rgb")"
+	printf "%s" "$2"
+	printf "\033[m"
+}
+
+################################################################################
+#                                                                              #
+#                          Benchmarking Methods                                #
+#                                                                              #
+################################################################################
+
+timer(){
+	# desc: general purpose timer script, used to benchmark the various shell functions
+	# NOTE: date usage is not POSIX compliant; requires gnu date
+	cmd="$*"
+	printf "${LOG_GREEN}${LOG_BOLD}time:${LOG_RESET} cmd:${LOG_RESET} ${LOG_RED}'%s'${LOG_RESET} args: ${LOG_CYAN}'%s'${LOG_RESET}" \
+		"${cmd%% *}" \
+		"${cmd#* }"
+	# core part of timer (requires gnu date)
+	printf " o: '"
+	st=$(date +%s.%3N)
+	$cmd  | tr -d '\n'
+	et=$(date +%s.%3N)
+	printf "'"
+	# get the elapsed time
+	elt=$(echo "scale=$BC_SCALE; $et - $st" | bc)
+	printf " - took ${LOG_YELLOW}%s seconds${LOG_RESET}\n" "$elt"
+}
+
+assert(){
+	# desc: general purpose assertion method
+	correct_value="$1"
+	shift # get $1 out of the args list
+	test_value="$($@)"
+	printf "${LOG_GREEN}${LOG_BOLD}assert:${LOG_RESET} cmd: ${LOG_RED}'%s'${LOG_RESET} args: ${LOG_CYAN}'%s'${LOG_RESET} o: '%s' e: '%s' " \
+		"${*%% *}" \
+		"${*##* }" \
+		"$test_value" \
+		"$correct_value"
+	[ "$correct_value" = "$test_value" ] && printf "${LOG_GREEN}${LOG_FLIP}PASSED${LOG_RESET}\n" || printf "${LOG_RED}${LOG_FLIP}${LOG_BLINK}FAILED${LOG_RESET}\n"
+}
+
+run_time_test(){
+	timer b102hex "143"
+	timer three_f1 "23,43,123"
+	timer three_f2 "23,43,123"
+	timer three_f3 "23,43,123"
+	timer hex2rgb "#21a0e2"
+	timer rgb2hex "23,43,123"
+
+	timer print_hex "#21a0e2"
+	timer print_rgb "23,43,123"
+	timer print_text_hex "#431290" "Example Text"
+	timer print_text_rgb "191,23,78" "Example Text"
+
+	timer rgb_W_K "23,43,123"
+	timer rgb2cmyk "123,242,153"
+
+	timer rgbp2rgb_sh ".3,.74323,.1321"
+	timer rgbp2rgb_tcc ".3,.74323,.1321"
+	timer rgbp2rgb_quickjs ".3,.74323,.1321"
+
+	timer rgb2rgbp_sh "123,242,153"
+	timer rgb2rgbp_tcc "123,242,153"
+	timer rgb2rgbp_quickjs "123,242,153"
+
+	timer rgb_is_g "23,43,123"
+	timer rgb_is_r "23,43,123"
+	timer rgb_is_b "23,43,123"
+
+	timer rgb_triad "23,43,123"
+	timer getMAXrgb "23,43,123"
+	timer getMINrgb "23,43,123"
+	timer rgb_avg_v "23,43,123"
+
+	timer hsl_chroma "60,1,.375"
+	timer hsl_chroma_quickjs "60,1,.375"
+
+	timer hsl_h_prime "60,1,.375"
+
+	timer rgb_what_color "23,43,123"
+	timer rgb_complement_sh "23,43,123"
+	timer rgb_complement_quickjs "23,43,123"
+
+	timer rgb_blend_colors "231,23,98" "131,55,100"
+
+	timer hsl_intermediate_x "1" ".75"
+
+	timer rgb2hsl "23,43,123"
+	timer hex2hsl "#21a0e2"
+
+	timer hex_blend_colors "#3eaf00" "#dd2208"
+
+	timer hex_complement "#2fa482"
+}
+
+run_assertion_test(){
+	assert "23" three_f1 "23,43,123"
+	assert "43" three_f2 "23,43,123"
+	assert "123" three_f3 "23,43,123"
+
+	assert "23" getMINrgb "23,43,123"
+	assert "13" getMINrgb "23,13,123"
+	assert "3" getMINrgb "23,43,3"
+
+	assert "77,190,34" rgbp2rgb ".3,.74323,.1321"
+	assert "77,190,34" rgbp2rgb_tcc ".3,.74323,.1321"
+	assert "77,190,34" rgbp2rgb_quickjs ".3,.74323,.1321"
+
+	assert "63" rgb_avg_v "23,43,123"
+
+	assert "123" getMAXrgb "23,43,123"
+	assert "231" getMAXrgb "231,25,123"
+	assert "245" getMAXrgb "231,245,123"
+
+	assert ".750" hsl_chroma_sh "60,1,.375"
+	assert ".501468" hsl_chroma_sh "61.8,.638,.393"
+	assert "1.0" hsl_chroma_sh "0,1,.5"
+	assert ".889428" hsl_chroma_sh "49.5,.893,.498"
+	assert ".708350" hsl_chroma_sh "283.7,.775,.543"
+
+	assert "0.75" hsl_chroma_quickjs "60,1,.375"
+	assert "0.501468" hsl_chroma_quickjs "61.8,.638,.393"
+	assert "1" hsl_chroma_quickjs "0,1,.5"
+	assert "0.889428" hsl_chroma_quickjs "49.5,.893,.498"
+	assert "0.7083499999999999" hsl_chroma_quickjs "283.7,.775,.543"
+
+	assert "#172b7b" rgb2hex "23,43,123"
+
+	assert "B" rgb_what_color "23,43,123"
+	assert "G" rgb_what_color "23,123,43"
+	assert "R" rgb_what_color "123,23,43"
+	assert "W" rgb_what_color "211,211,211"
+	assert "K" rgb_what_color "23,23,23"
+
+	assert "232,212,132" rgb_complement_sh "23,43,123"
+
+	assert "232,212,132" rgb_complement_quickjs "23,43,123"
+
+	assert "1.00000000000000000000" hsl_h_prime "60,1,.375"
+
+	assert "23,43,123 123,23,43 43,123,23 " rgb_triad "23,43,123"
+
+
+	assert "227.99999999999999999940,.68493150684931506851,.28627450980392156862" rgb2hsl "23,43,123"
+	assert "227.99999999999999999940,.68493150684931506851,.28627450980392156862" hex2hsl "#172b7b"
+
+}
+
+################################################################################
+#                                                                              #
+#                         Documentation Methods                                #
+#                                                                              #
+################################################################################
+
+print_help(){
+	# TODO: rewrite this to not use tabs, and instead use spaces. (and to be in order)
+	# --- also check to see if there is a tool that can generate
+	# this documentation automatically.
+echo "Usage: '. shcolorlib' or 'shcolorlib <action> <input>'
+
+Currently Supported Actions: ( = -> done; * -> in progress)
+
+	= hasdeps                       - check if you have all of the dependencies installed
+	= hasoptdeps                    - check if you have all of the optional dependencies installed
+	= round                         - round a decimal number to the nearest whole number
+	= b102hex                       - base 10 to hex conversion
+	* rgb_what_color                - prints out a letter corresponding to the color
+	= rgb2hex                       - converts an RGB value to a hex value
+	= rgb_triad                     - generates a triad of colors from an RGB value
+	= rgb_complement                - generates the complement color from an RGB value
+	= rgb2rgbp                      - converts RGB values into percentage values
+	* rgbp2cmyk                     - converts an RGB (percentage) value into a CMYK value
+	* rgb2cmyk                      - converts an RGB value into a CMYK value
+	* getMAXrgb                     - gets the max value from an RGB color
+	* getMINrgb                     - gets the min value from an RGB color
+	= hex2rgb                       - converts a hex color into an RGB color
+	= rgb_avg_v                     - returns the average of the RGB values
+	= hsl_chroma                    - returns the chroma value for an HSL color
+	= hsl_h_prime                   - returns the h prime value for an HSL color
+	* hsl_intermediate_x            - method to calculate the intermediate x value for hsl
+	* hsl2rgbp                      - converts an HSL color to an RGB (percentage) value
+	* rgbp2rgb                      - converts an RGB (percentage) value to an RGB value
+	* rgbp2rgb_quickjs
+	= rgbp2rgb_tcc
+	* rgbp2hsl                      - converts an RGB (percentage) value to an HSL color
+	* rgb2hsl                       - converts an RGB value to an HSL color
+	* hsl2rgb                       - converts an HSL color to an RGB value
+	= print_rgb                     - prints an RGB value as it's actual value
+	= print_hex                     - prints a hex color as it's actual value
+	= run_time_test                 - runs a time test of every function
+	= run_assertion_test            - runs an assertion test of every function
+	* print_help                    - print this message
+	* print_doc                     - print the documentation
+"
+}
+
+print_doc(){
+	# FIXME: Documentation is in dire need of creation
+exit
+}
+
+help(){
+	print_help
+}
+
+################################################################################
+#                                                                              #
+#                                  Main Script                                 #
+#                                                                              #
+################################################################################
+
+[ -z "$1" ] && exit 1 || hasdeps
+cmd="" # library function
+cmd_args="" # args to function
+for arg in "$@" # iterate through every argument
+do
+	# check if the arg is a shell function
+	type "$arg" 1>/dev/null && cmd="$arg" || cmd_args="$cmd_args $arg"
+done
+# run the function with the input; cmd_args is deliberately not quoted
+eval $cmd $cmd_args
