@@ -48,6 +48,6 @@ To run the assertion test, run: `shcolorlib run_assertion_test`
 Quickjs and tcc are used in the shell library for functions
 that are slow in shell. Those two runtimes offer speeds that
 are either equivalent to shell or faster. They are also totally
-opetional to the end user, there is no need to have either of
+optional to the end user, there is no need to have either of
 these programs installed, because there are no methods exclusive
 to either of these runtimes.
