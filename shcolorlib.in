@@ -177,34 +177,34 @@ three_f3(){
 rgb_is_r(){
 	# desc: return 0 if largest rgb value is red
 	# TODO: rewrite using bc
-	[ $(three_f1 "$1") -gt $(three_f2 "$1") ] \
-		&& [ $(three_f1 "$1") -gt $(three_f3 "$1") ]
+	[ "$(three_f1 "$1")" -gt "$(three_f2 "$1")" ] \
+		&& [ "$(three_f1 "$1")" -gt "$(three_f3 "$1")" ]
 }
 
 rgb_is_g(){
 	# desc: return 0 if largest rgb value is green
 	# TODO: rewrite using bc
-	[ $(three_f2 "$1") -gt $(three_f1 "$1") ] \
-		&& [ $(three_f2 "$1") -gt $(three_f3 "$1") ]
+	[ "$(three_f2 "$1")" -gt "$(three_f1 "$1")" ] \
+		&& [ "$(three_f2 "$1")" -gt "$(three_f3 "$1")" ]
 }
 
 rgb_is_b(){
 	# desc: return 0 if largest rgb value is blue
 	# TODO: rewrite using bc
-	[ $(three_f3 "$1") -gt $(three_f1 "$1") ] \
-		&& [ $(three_f3 "$1") -gt $(three_f2 "$1") ]
+	[ "$(three_f3 "$1")" -gt "$(three_f1 "$1")" ] \
+		&& [ "$(three_f3 "$1")" -gt "$(three_f2 "$1")" ]
 }
 
 rgb_W_K(){
 	# desc: return W if white, and K if black
-	[ $(three_f1 "$1") -eq $(three_f2 "$1") ] \
-		&& [ $(three_f1 "$1") -eq $(three_f3 "$1") ] \
-		&& [ $(three_f1 "$1") -lt 127 ] \
+	[ "$(three_f1 "$1")" -eq "$(three_f2 "$1")" ] \
+		&& [ "$(three_f1 "$1")" -eq "$(three_f3 "$1")" ] \
+		&& [ "$(three_f1 "$1")" -lt 127 ] \
 		&& printf "K"
 
-	[ $(three_f1 "$1") -eq $(three_f2 "$1") ] \
-		&& [ $(three_f1 "$1") -eq $(three_f3 "$1") ] \
-		&& [ $(three_f1 "$1") -ge 127 ] \
+	[ "$(three_f1 "$1")" -eq "$(three_f2 "$1")" ] \
+		&& [ "$(three_f1 "$1")" -eq "$(three_f3 "$1")" ] \
+		&& [ "$(three_f1 "$1")" -ge 127 ] \
 		&& printf "W"
 }
 
@@ -227,9 +227,9 @@ rgb2hex(){
 rgb_triad(){
 	# desc: generate an rgb 'triad' from an initial rgb value
 	# ex: 'rgb_triad 123,43,243'
-	rv=$(three_f1 "$1")
-	gv=$(three_f2 "$1")
-	bv=$(three_f3 "$1")
+	rv="$(three_f1 "$1")"
+	gv="$(three_f2 "$1")"
+	bv="$(three_f3 "$1")"
 	printf "%s " "$1"
 	printf "%s,%s,%s "  "${bv}" "${rv}" "${gv}"
 	printf "%s,%s,%s "  "${gv}" "${bv}" "${rv}"
@@ -285,9 +285,9 @@ cat <<EOF | tcc -run -
 #include <stdio.h>
 #include <math.h>
 int main(){
-	float r = $(three_f1 $1) / 255;
-	float g = $(three_f2 $1) / 255;
-	float b = $(three_f3 $1) / 255;
+	float r = $(three_f1 "$1") / 255;
+	float g = $(three_f2 "$1") / 255;
+	float b = $(three_f3 "$1") / 255;
 	printf("%f,%f,%f", r, g, b);
 	return 0;
 }
@@ -298,7 +298,7 @@ rgb2rgbp_quickjs(){
 	# result of method has a 0 before the decimal; needs to be removed (for consistency)
 tjs=$(mktemp)
 cat <<EOF > "$tjs"
-console.log($(three_f1 $1) / 255 + "," + $(three_f2 $1) / 255 + "," + $(three_f3 $1) / 255)
+console.log($(three_f1 "$1") / 255 + "," + $(three_f2 "$1") / 255 + "," + $(three_f3 "$1") / 255)
 EOF
 eval ${JS_INTERP} "$tjs"
 rm "$tjs"
@@ -342,9 +342,9 @@ rgb2hsl(){
 }
 
 rgb_blend_colors(){
-	rv="$(round "$(echo "0.5 * $(three_f1 $1) + 0.5 * $(three_f1 $2)" | bc)")"
-	gv="$(round "$(echo "0.5 * $(three_f2 $1) + 0.5 * $(three_f2 $2)" | bc)")"
-	bv="$(round "$(echo "0.5 * $(three_f3 $1) + 0.5 * $(three_f3 $2)" | bc)")"
+	rv="$(round "$(echo "0.5 * $(three_f1 "$1") + 0.5 * $(three_f1 "$2")" | bc)")"
+	gv="$(round "$(echo "0.5 * $(three_f2 "$1") + 0.5 * $(three_f2 "$2")" | bc)")"
+	bv="$(round "$(echo "0.5 * $(three_f3 "$1") + 0.5 * $(three_f3 "$2")" | bc)")"
 	printf "%s,%s,%s" "$rv" "$gv" "$bv"
 }
 
@@ -419,7 +419,7 @@ rgbp2hsl(){
 	h="$l"
 
 	c="$(echo "scale=$BC_SCALE; ($max - $min)" | bc)"
-	if [ $max = $min ]
+	if [ "$max" = "$min" ]
 	then
 		h="0"
 		s="0"
@@ -463,8 +463,8 @@ cat <<EOF > "$tjs"
 var rv = $(three_f1 "$1")
 var gv = $(three_f2 "$1")
 var bv = $(three_f3 "$1")
-var max = $(getMAXrgb $1)
-var min = $(getMINrgb $1)
+var max = $(getMAXrgb "$1")
+var min = $(getMINrgb "$1")
 
 var l = (max + min) / 2
 var c = max - min
@@ -902,4 +902,4 @@ do
 	type "$arg" 1>/dev/null && cmd="$arg" || cmd_args="$cmd_args $arg"
 done
 # run the function with the input; cmd_args is deliberately not quoted
-eval $cmd $cmd_args
+eval "$cmd $cmd_args"
