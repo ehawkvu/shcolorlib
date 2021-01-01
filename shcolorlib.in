@@ -109,10 +109,30 @@ hasdeps(){
 }
 
 hasoptdeps(){
-	command -v tcc 1> /dev/null && log "'tcc' is installed | scripting support: " "y" || log "'tcc' is not installed | scripting support: " "n"
-	command -v ${JS_INTERP} 1> /dev/null && log "'${JS_INTERP}' is installed | scripting support: " "y" || log "'${JS_INTERP}' is not installed | scripting support: " "n"
-	command -v luajit 1> /dev/null && log "'luajit' is installed | scripting support: " "y" || log "'luajit' is not installed | scripting support: " "n"
- 	date --version | grep "GNU" 1> /dev/null && log "'gnu-date' is installed | benchmark support: " "y" || "'gnu-date' is not installed | benchmark support: " "n"
+	if command -v tcc 1> /dev/null
+	then
+		log "'tcc' is installed | scripting support: " "y"
+	else
+		log "'tcc' is not installed | scripting support: " "n"
+	fi
+	if command -v ${JS_INTERP} 1> /dev/null
+	then
+		log "'${JS_INTERP}' is installed | scripting support: " "y"
+	else
+		log "'${JS_INTERP}' is not installed | scripting support: " "n"
+	fi
+	if command -v luajit 1> /dev/null
+	then
+		log "'luajit' is installed | scripting support: " "y"
+	else
+    log "'luajit' is not installed | scripting support: " "n"
+	fi
+	if date --version | grep "GNU" 1> /dev/null
+	then
+		log "'gnu-date' is installed | benchmark support: " "y"
+	else
+		log "'gnu-date' is not installed | benchmark support: " "n"
+	fi
 }
 
 round(){
