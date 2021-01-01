@@ -708,8 +708,7 @@ assert(){
 	# desc: general purpose assertion method
 	correct_value="$1"
 	shift # get $1 out of the args list
-#	test_value="$(eval "$@")"
-	test_value="$($@)" # get the above line to work; it's more readable
+	test_value="$(eval "$@")"
 	printf "${LOG_GREEN}${LOG_BOLD}assert:${LOG_RESET} cmd: ${LOG_RED}'%s'${LOG_RESET} args: ${LOG_CYAN}'%s'${LOG_RESET} o: '%s' e: '%s' " \
 		"${*%% *}" \
 		"${*##* }" \
@@ -826,7 +825,7 @@ run_assertion_test(){
 
 
 	assert "227.99999999999999999940,.68493150684931506851,.28627450980392156862" rgb2hsl "23,43,123"
-	assert "227.99999999999999999940,.68493150684931506851,.28627450980392156862" hex2hsl "#172b7b"
+	assert "227.99999999999999999940,.68493150684931506851,.28627450980392156862" hex2hsl "\"#172b7b"\"
 
 }
 
