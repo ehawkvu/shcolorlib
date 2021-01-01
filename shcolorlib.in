@@ -237,7 +237,7 @@ rgb_triad(){
 
 rgb_complement(){
 	rgb_complement_sh "$1" && return 0
-	command -v ${JS_INTERP} 2>&1 1> /dev/null && rgb_complement_quickjs "$1" && return 0
+	command -v ${JS_INTERP} 1> /dev/null 2>&1 && rgb_complement_quickjs "$1" && return 0
 }
 
 rgb_complement_sh(){
@@ -265,8 +265,8 @@ rm "$tjs"
 rgb2rgbp(){
 	# FIXME: make sure this is the right order
 	rgb2rgbp_sh "$1" && return 0
-	command -v ${JS_INTERP} 2>&1 1> /dev/null && rgb2rgbp_quickjs "$1" && return 0
-	command -v tcc 2>&1 1> /dev/null && rgb2rgbp_tcc "$1" && return 0
+	command -v ${JS_INTERP} 1> /dev/null 2>&1 && rgb2rgbp_quickjs "$1" && return 0
+	command -v tcc 1> /dev/null 2>&1 && rgb2rgbp_tcc "$1" && return 0
 }
 
 rgb2rgbp_sh(){
@@ -356,7 +356,7 @@ rgb_blend_colors(){
 
 rgbp2rgb(){
 	rgbp2rgb_sh "$1" && return 0
-	command -v ${JS_INTERP} 2>&1 1> /dev/null && rgbp2rgb_quickjs "$1" && return 0
+	command -v ${JS_INTERP} 1> /dev/null 2>&1 && rgbp2rgb_quickjs "$1" && return 0
 	rgbp2rgb_tcc "$1" && return 0
 }
 
@@ -509,7 +509,7 @@ hex_complement(){
 hsl_chroma(){
 	# FIXME: do testing to make sure the order is correct
 	hsl_chroma_sh "$1" && return 0
-	command -v ${JS_INTERP} 2>&1 1> /dev/null && hsl_chroma_quickjs "$1" && return 0
+	command -v ${JS_INTERP} 1> /dev/null 2>&1 && hsl_chroma_quickjs "$1" && return 0
 }
 
 hsl_chroma_sh(){
