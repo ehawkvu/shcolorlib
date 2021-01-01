@@ -252,14 +252,14 @@ rgb_complement_sh(){
 rgb_complement_quickjs(){
 	# ex: 'rgb_complement_quickjs 123,43,243'
 tjs=$(mktemp)
-cat <<EOF > $tjs
-var r = 255 - $(three_f1 $1)
-var g = 255 - $(three_f2 $1)
-var b = 255 - $(three_f3 $1)
+cat <<EOF > "$tjs"
+var r = 255 - $(three_f1 "$1")
+var g = 255 - $(three_f2 "$1")
+var b = 255 - $(three_f3 "$1")
 console.log(r + "," + g + "," + b)
 EOF
-${JS_INTERP} $tjs
-rm $tjs
+${JS_INTERP} "$tjs"
+rm "$tjs"
 }
 
 rgb2rgbp(){
@@ -274,9 +274,9 @@ rgb2rgbp_sh(){
 	# ex: 'rgb2rgbp 123,43,243'
 	rgb="$1"
 	printf "%s,%s,%s" \
-		$(echo "scale=$BC_SCALE; $(three_f1 "$rgb") / 255" | bc) \
-		$(echo "scale=$BC_SCALE; $(three_f2 "$rgb") / 255" | bc) \
-		$(echo "scale=$BC_SCALE; $(three_f3 "$rgb") / 255" | bc)
+		"$(echo "scale=$BC_SCALE; $(three_f1 "$rgb") / 255" | bc)" \
+		"$(echo "scale=$BC_SCALE; $(three_f2 "$rgb") / 255" | bc)" \
+		"$(echo "scale=$BC_SCALE; $(three_f3 "$rgb") / 255" | bc)"
 }
 
 rgb2rgbp_tcc(){
@@ -297,11 +297,11 @@ EOF
 rgb2rgbp_quickjs(){
 	# result of method has a 0 before the decimal; needs to be removed (for consistency)
 tjs=$(mktemp)
-cat <<EOF > $tjs
+cat <<EOF > "$tjs"
 console.log($(three_f1 $1) / 255 + "," + $(three_f2 $1) / 255 + "," + $(three_f3 $1) / 255)
 EOF
-${JS_INTERP} $tjs
-rm $tjs
+${JS_INTERP} "$tjs"
+rm "$tjs"
 }
 
 rgb2cmyk(){
@@ -362,18 +362,18 @@ rgbp2rgb(){
 
 rgbp2rgb_sh(){
 	printf "%s,%s,%s" \
-		"$(round $(echo "$(three_f1 "$1") * 255" | bc))" \
-		"$(round $(echo "$(three_f2 "$1") * 255" | bc))" \
-		"$(round $(echo "$(three_f3 "$1") * 255" | bc))"
+		"$(round "$(echo "$(three_f1 "$1") * 255" | bc)")" \
+		"$(round "$(echo "$(three_f2 "$1") * 255" | bc)")" \
+		"$(round "$(echo "$(three_f3 "$1") * 255" | bc)")"
 }
 
 rgbp2rgb_quickjs(){
 tjs=$(mktemp)
-cat <<EOF > $tjs
-console.log(Math.round($(three_f1 $1) * 255) + "," + Math.round($(three_f2 $1) * 255) + "," + Math.round($(three_f3 $1) * 255))
+cat <<EOF > "$tjs"
+console.log(Math.round($(three_f1 "$1") * 255) + "," + Math.round($(three_f2 "$1") * 255) + "," + Math.round($(three_f3 "$1") * 255))
 EOF
-${JS_INTERP} $tjs
-rm $tjs
+${JS_INTERP} "$tjs"
+rm "$tjs"
 }
 
 rgbp2rgb_tcc(){
@@ -381,9 +381,9 @@ cat <<EOF | tcc -run -
 #include <stdio.h>
 #include <math.h>
 int main(){
-	float r = $(three_f1 $1) * 255;
-	float g = $(three_f2 $1) * 255;
-	float b = $(three_f3 $1) * 255;
+	float r = $(three_f1 "$1") * 255;
+	float g = $(three_f2 "$1") * 255;
+	float b = $(three_f3 "$1") * 255;
 	printf("%.0f,%.0f,%.0f", round(r), round(g), round(b));
 	return 0;
 }
@@ -459,7 +459,7 @@ rgbp2hsl(){
 rgbp2hsl_quickjs(){
 	# FIXME: method is not actually implemented at the moment.
 tjs=$(mktemp)
-cat <<EOF > $tjs
+cat <<EOF > "$tjs"
 var rv = $(three_f1 "$1")
 var gv = $(three_f2 "$1")
 var bv = $(three_f3 "$1")
@@ -470,8 +470,8 @@ var l = (max + min) / 2
 var c = max - min
 console.log(((1 - Math.abs(2 * lv - 1)) * sv))
 EOF
-${JS_INTERP} $tjs
-rm $tjs
+${JS_INTERP} "$tjs"
+rm "$tjs"
 }
 
 ################################################################################
@@ -527,19 +527,19 @@ hsl_chroma_sh(){
 
 hsl_chroma_quickjs(){
 tjs=$(mktemp)
-cat <<EOF > $tjs
-var sv = $(three_f2 $1)
-var lv = $(three_f3 $1)
+cat <<EOF > "$tjs"
+var sv = $(three_f2 "$1")
+var lv = $(three_f3 "$1")
 console.log(((1 - Math.abs(2 * lv - 1)) * sv))
 EOF
-${JS_INTERP} $tjs
-rm $tjs
+${JS_INTERP} "$tjs"
+rm "$tjs"
 }
 
 
 hsl_h_prime(){
 	# h' = h / 60
-	hv="$(three_f1 $1)"
+	hv="$(three_f1 "$1")"
 	echo "scale=$BC_SCALE; ($hv / 60)" | bc
 }
 
@@ -570,9 +570,9 @@ hsl2rgbp(){
 	x="$(hsl_intermediate_x "$hprime" "$chroma")" # FIXME: this method is returning a zero with hsl=200,.768,.257
 	echo "x - $x"
 
-	h=$(three_f1 $hsl)
-	s=$(three_f2 $hsl)
-	l=$(three_f3 $hsl)
+	h=$(three_f1 "$hsl")
+	s=$(three_f2 "$hsl")
+	l=$(three_f3 "$hsl")
 
 	echo "l - $l"
 	echo "chroma / 2 - $(echo "scale=$BC_SCALE; $chroma / 2" | bc)"
@@ -660,7 +660,7 @@ print_text_rgb(){
 print_hex(){
 	# desc: print a hex value as it's value
 	# ex: 'print_hex "\#FF00aa"'
-	hex="$(echo $1 | tr -d '#')" # remove any '#'s
+	hex="$(echo "$1" | tr -d '#')" # remove any '#'s
 	rgb="$(hex2rgb "$hex")"
 	printf "\033[48;2;%s;%s;%sm" "$(three_f1 "$rgb")" "$(three_f2 "$rgb")" "$(three_f3 "$rgb")"
 	printf "%s" "$hex"
@@ -673,7 +673,7 @@ print_text_hex(){
 	# - when called from command line it doesn't print anything?
 	# desc: print text highlighted as a hex color
 	# ex: 'print_text_hex "\#FF00aa" "here is some text"'
-	hex="$(echo $1 | tr -d '#')"
+	hex="$(echo "$1" | tr -d '#')"
 	rgb="$(hex2rgb "$hex")"
 	printf "\033[48;2;%s;%s;%sm" "$(three_f1 "$rgb")" "$(three_f2 "$rgb")" "$(three_f3 "$rgb")"
 	printf "%s" "$2"
@@ -708,13 +708,19 @@ assert(){
 	# desc: general purpose assertion method
 	correct_value="$1"
 	shift # get $1 out of the args list
-	test_value="$($@)"
+#	test_value="$(eval "$@")"
+	test_value="$($@)" # get the above line to work; it's more readable
 	printf "${LOG_GREEN}${LOG_BOLD}assert:${LOG_RESET} cmd: ${LOG_RED}'%s'${LOG_RESET} args: ${LOG_CYAN}'%s'${LOG_RESET} o: '%s' e: '%s' " \
 		"${*%% *}" \
 		"${*##* }" \
 		"$test_value" \
 		"$correct_value"
-	[ "$correct_value" = "$test_value" ] && printf "${LOG_GREEN}${LOG_FLIP}PASSED${LOG_RESET}\n" || printf "${LOG_RED}${LOG_FLIP}${LOG_BLINK}FAILED${LOG_RESET}\n"
+	if [ "$correct_value" = "$test_value" ]
+	then
+		printf "${LOG_GREEN}${LOG_FLIP}PASSED${LOG_RESET}\n"
+	else
+		printf "${LOG_RED}${LOG_FLIP}${LOG_BLINK}FAILED${LOG_RESET}\n"
+	fi
 }
 
 run_time_test(){
