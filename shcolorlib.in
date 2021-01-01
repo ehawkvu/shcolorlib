@@ -709,9 +709,10 @@ assert(){
 	correct_value="$1"
 	shift # get $1 out of the args list
 	test_value="$(eval "$@")"
+	cmd="$*"
 	printf "${LOG_GREEN}${LOG_BOLD}assert:${LOG_RESET} cmd: ${LOG_RED}'%s'${LOG_RESET} args: ${LOG_CYAN}'%s'${LOG_RESET} o: '%s' e: '%s' " \
-		"${*%% *}" \
-		"${*##* }" \
+		"${cmd%% *}" \
+		"${cmd##* }" \
 		"$test_value" \
 		"$correct_value"
 	if [ "$correct_value" = "$test_value" ]
