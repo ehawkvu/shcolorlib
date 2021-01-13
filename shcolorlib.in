@@ -653,7 +653,8 @@ print_text_rgb(){
 	# desc: print text highlighted as a rgb color
 	# ex: 'print_text_rgb "23,43,123" "here is some text"'
 	printf "\033[48;2;%s;%s;%sm" "$(three_f1 "$1")" "$(three_f2 "$1")" "$(three_f3 "$1")"
-	printf "%s" "$2"
+	shift
+	printf "%s" "$*"
 	printf "\033[m"
 }
 
@@ -674,9 +675,10 @@ print_text_hex(){
 	# desc: print text highlighted as a hex color
 	# ex: 'print_text_hex "\#FF00aa" "here is some text"'
 	hex="$(echo "$1" | tr -d '#')"
+	shift
 	rgb="$(hex2rgb "$hex")"
 	printf "\033[48;2;%s;%s;%sm" "$(three_f1 "$rgb")" "$(three_f2 "$rgb")" "$(three_f3 "$rgb")"
-	printf "%s" "$2"
+	printf "%s" "$*"
 	printf "\033[m"
 }
 
