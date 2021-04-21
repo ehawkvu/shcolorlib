@@ -31,7 +31,7 @@ Or you can use the library directly:
 
 ## installation
 
-Just run: `make install PREFIX=/usr DESTDIR=...`
+Just run: `make && make install PREFIX=/usr DESTDIR=...`
 
 ## running the test suite
 
